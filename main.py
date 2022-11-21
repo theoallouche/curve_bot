@@ -11,15 +11,19 @@ import pygame
 BOARD = {"top": 334, "left": 430, "width": 754, "height": 754}
 LEFT_KEY = 'a'
 RIGHT_KEY = 'z'
-CURVATURE_RADIUS = 50
-LINE_WIDTH = 10#4
+CURVATURE_RADIUS = 35
+LINE_WIDTH = 20  # 4
 
 LEFT, RIGHT = -1, 1
 
+def get_rgb_board(board_position):
+    with mss.mss() as sct:
+        return np.transpose(np.flip(np.array(sct.grab(board_position))[:, :, :3], axis=-1), (1, 0, 2))
+
 def get_head_position(current_board, previous_board):
     # RGB to gray + binarization
-    new_im = cv2.cvtColor(current_board, cv2.COLOR_BGR2GRAY)
-    old_im = cv2.cvtColor(previous_board, cv2.COLOR_BGR2GRAY)
+    new_im = cv2.cvtColor(current_board, cv2.COLOR_RGB2GRAY)
+    old_im = cv2.cvtColor(previous_board, cv2.COLOR_RGB2GRAY)
     _, new_im = cv2.threshold(new_im, 10, 255, cv2.THRESH_BINARY)
     _, old_im = cv2.threshold(old_im, 10, 255, cv2.THRESH_BINARY)
 
@@ -35,9 +39,26 @@ def get_head_position(current_board, previous_board):
     # head = (labels_im == d).astype(np.uint8)
 
     M = cv2.moments(diff)
-    cX = int(M["m10"] / M["m00"])
-    cY = int(M["m01"] / M["m00"])
-    return np.array([cX, cY])
+    return np.array([int(M["m01"] / M["m00"]), int(M["m10"] / M["m00"])])
+
+def get_direction(positions):
+    last_position_ind = 10
+    if len(positions) < last_position_ind:
+        direction = positions[-1] - positions[-2]
+    else:
+        direction = positions[-1] - positions[-last_position_ind]
+    return direction
+
+def apply_move(move):
+    if move == LEFT:
+        keyboard.release(RIGHT_KEY)
+        keyboard.press(LEFT_KEY)
+    elif move == RIGHT:
+        keyboard.release(LEFT_KEY)
+        keyboard.press(RIGHT_KEY)
+    else:
+        keyboard.release(RIGHT_KEY)
+        keyboard.release(LEFT_KEY)
 
 
 class Sensor(pygame.sprite.Sprite):
@@ -52,7 +73,7 @@ class Sensor(pygame.sprite.Sprite):
         self.mask.invert()
 
     def update(self, position, direction, obstacle):
-        # Sensor position is in front of the head, at a distance of 'CURVATURE_RADIUS'
+        # Sensor position should be in front of the head, at a distance of 'CURVATURE_RADIUS'
         self.rect.center = position + CURVATURE_RADIUS*direction / np.linalg.norm(direction)
         # if pygame.mouse.get_pos():
         #     self.rect.center = pygame.mouse.get_pos()
@@ -61,12 +82,13 @@ class Sensor(pygame.sprite.Sprite):
         offset = obstacle.sprite.rect.x - self.rect.x, obstacle.sprite.rect.y - self.rect.y
         return self.mask.overlap_mask(obstacle.sprite.mask, offset)
 
-    def get_move(self, position, direction, collision_mask):
+    def get_move(self, head_position, direction, collision_mask):
         if collision_mask.count() == 0:
-            return 0
-        centroid = collision_mask.centroid() # Coordonnees dans le réferentiel du rect du sensor ((0, 0) en bas à gauche).
-        to_centroid_vec = centroid - np.array([self.radius//2, self.radius//2])
-        signed_angle = np.arctan2(to_centroid_vec[1], to_centroid_vec[0]) - np.arctan2(direction[1], direction[0])
+            return LEFT
+        impact_position = collision_mask.centroid() # Coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche).
+        impact_absolute_position = np.array(self.rect.topleft) + impact_position
+        head_to_centroid_vec = impact_absolute_position - head_position
+        signed_angle = np.arctan2(head_to_centroid_vec[1], head_to_centroid_vec[0]) - np.arctan2(direction[1], direction[0])
         if signed_angle > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
             return LEFT
         return RIGHT
@@ -75,7 +97,7 @@ class Sensor(pygame.sprite.Sprite):
 class Obstacle(pygame.sprite.Sprite):
 
     def update(self, image):
-        self.image = pygame.surfarray.make_surface(image.transpose(1, 0, 2))
+        self.image = pygame.surfarray.make_surface(image)
         self.rect = self.image.get_rect(center=(BOARD["width"]//2, BOARD["height"]//2))
         self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1,1,1,1))
         self.mask.invert()
@@ -88,8 +110,7 @@ screen = pygame.display.set_mode((BOARD["width"], BOARD["height"]))
 sensor = pygame.sprite.GroupSingle(Sensor())
 obstacle = pygame.sprite.GroupSingle(Obstacle())
 positions = [[0, 0]]
-with mss.mss() as sct:
-    old_im = np.array(sct.grab(BOARD))[:, :, :3]
+old_im = np.zeros((BOARD["width"], BOARD["height"], 3), dtype=np.uint8)
 
 # Main loop
 while True:
@@ -99,51 +120,34 @@ while True:
             pygame.quit()
             sys.exit()
 
-    # Fetch new image and convert to 3D (RGB) numpy array
-    with mss.mss() as sct:
-        new_im = np.array(sct.grab(BOARD))[:, :, :3]
+    board = get_rgb_board(BOARD)
 
     # Skip to next image if it has not changed
-    if (new_im == old_im).all():
+    if (board == old_im).all():
         continue
 
-    # Try to find the head position (based on successive images difference). Skip to next image if unfound.
+    # Try to find the head position (based on successive images difference)
+    # Skip to next image if unfound
     try:
-        position = get_head_position(new_im, old_im)
+        head_position = get_head_position(board, old_im)
     except (ValueError, ZeroDivisionError) as e:
         print(f"Cant find the head ({e})")
         continue
 
-    old_im = new_im.copy()
+    old_im = board.copy()
 
-    # Store all succesive head positions
-    positions.append(position)
+    positions.append(head_position)
+    direction = get_direction(positions)
 
-    # Try to find an average direction from last positions
-    if len(positions) < 10:
-        direction = position - positions[-1]
-    else:
-        direction = position - positions[-10]
+    obstacle.update(board)
+    sensor.update(head_position, direction, obstacle)
 
-    # Update obstacle map and sensor position
-    obstacle.update(new_im)
-    sensor.update(position, direction, obstacle)
-
-    # Detect collisions
     overlap_mask = sensor.sprite.get_collision_mask(obstacle)
     collision = overlap_mask.count() > 0
 
-    # Choose and apply move
-    move = sensor.sprite.get_move(position, direction, overlap_mask)
-    if move == LEFT:
-        keyboard.release(RIGHT_KEY)
-        keyboard.press(LEFT_KEY)
-    elif move == RIGHT:
-        keyboard.release(LEFT_KEY)
-        keyboard.press(RIGHT_KEY)
-    else:
-        keyboard.release(RIGHT_KEY)
-        keyboard.release(LEFT_KEY)
+    move = sensor.sprite.get_move(head_position, direction, overlap_mask)
+    print(move)
+    apply_move(move)
 
     # Drawing
     obstacle.draw(screen)
@@ -152,6 +156,9 @@ while True:
         overlap_surf = overlap_mask.to_surface(setcolor='red')
         overlap_surf.set_colorkey((0, 0, 0))
         screen.blit(overlap_surf, sensor.sprite.rect)
+    for posisition_c in positions:
+        pygame.draw.circle(screen, 'purple', posisition_c, 1)
+
     pygame.display.update()
-    clock.tick()
     pygame.display.set_caption(f"{int(clock.get_fps())} FPS")
+    clock.tick()
