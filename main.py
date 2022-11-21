@@ -12,7 +12,7 @@ BOARD = {"top": 334, "left": 430, "width": 754, "height": 754}
 LEFT_KEY = 'a'
 RIGHT_KEY = 'z'
 CURVATURE_RADIUS = 35
-LINE_WIDTH = 20  # 4
+LINE_WIDTH = 25  # 4
 
 LEFT, RIGHT = -1, 1
 
@@ -60,6 +60,12 @@ def apply_move(move):
         keyboard.release(RIGHT_KEY)
         keyboard.release(LEFT_KEY)
 
+def reset():
+    positions = [[0, 0]]
+    moves = []
+    old_im = np.zeros((BOARD["width"], BOARD["height"], 3), dtype=np.uint8)
+    same_frame_cpt = 0
+    return positions, moves, old_im, same_frame_cpt
 
 class Sensor(pygame.sprite.Sprite):
 
@@ -84,7 +90,7 @@ class Sensor(pygame.sprite.Sprite):
 
     def get_move(self, head_position, direction, collision_mask):
         if collision_mask.count() == 0:
-            return LEFT
+            return
         impact_position = collision_mask.centroid() # Coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche).
         impact_absolute_position = np.array(self.rect.topleft) + impact_position
         head_to_centroid_vec = impact_absolute_position - head_position
@@ -109,8 +115,7 @@ clock = pygame.time.Clock()
 screen = pygame.display.set_mode((BOARD["width"], BOARD["height"]))
 sensor = pygame.sprite.GroupSingle(Sensor())
 obstacle = pygame.sprite.GroupSingle(Obstacle())
-positions = [[0, 0]]
-old_im = np.zeros((BOARD["width"], BOARD["height"], 3), dtype=np.uint8)
+positions, moves, old_im, same_frame_cpt = reset()
 
 # Main loop
 while True:
@@ -124,6 +129,10 @@ while True:
 
     # Skip to next image if it has not changed
     if (board == old_im).all():
+        same_frame_cpt += 1
+        # If the screen has not changed for a long time, it's most likely game over
+        if same_frame_cpt == 20:
+            positions, moves, old_im, same_frame_cpt = reset()
         continue
 
     # Try to find the head position (based on successive images difference)
@@ -146,7 +155,7 @@ while True:
     collision = overlap_mask.count() > 0
 
     move = sensor.sprite.get_move(head_position, direction, overlap_mask)
-    print(move)
+    moves.append(move)
     apply_move(move)
 
     # Drawing
@@ -156,8 +165,14 @@ while True:
         overlap_surf = overlap_mask.to_surface(setcolor='red')
         overlap_surf.set_colorkey((0, 0, 0))
         screen.blit(overlap_surf, sensor.sprite.rect)
-    for posisition_c in positions:
-        pygame.draw.circle(screen, 'purple', posisition_c, 1)
+    for posisition, move in zip(positions, moves):
+        if move == LEFT:
+            color = 'blue'
+        elif move == RIGHT:
+            color = 'red'
+        else:
+            color = 'gray'
+        pygame.draw.circle(screen, color, posisition, 1)
 
     pygame.display.update()
     pygame.display.set_caption(f"{int(clock.get_fps())} FPS")
