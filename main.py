@@ -8,11 +8,11 @@ import pygame
 
 
 # BOARD = {"top": 337, "left": 433, "width": 748, "height": 748}
-BOARD = {"top": 334, "left": 430, "width": 754, "height": 754}
+BOARD = {"top": 336, "left": 432, "width": 750, "height": 750}
 LEFT_KEY = 'a'
 RIGHT_KEY = 'z'
-CURVATURE_RADIUS = 35
-LINE_WIDTH = 25  # 4
+CURVATURE_RADIUS = 30
+MAX_FPS = 60
 
 LEFT, RIGHT = -1, 1
 
@@ -63,15 +63,16 @@ def apply_move(move):
 def reset():
     positions = [[0, 0]]
     moves = []
+    collions_vecs = []
     old_im = np.zeros((BOARD["width"], BOARD["height"], 3), dtype=np.uint8)
     same_frame_cpt = 0
-    return positions, moves, old_im, same_frame_cpt
+    return positions, moves, collions_vecs, old_im, same_frame_cpt
 
 class Sensor(pygame.sprite.Sprite):
 
     def __init__(self):
         super().__init__()
-        self.radius = LINE_WIDTH
+        self.radius = CURVATURE_RADIUS
         self.image = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         pygame.draw.circle(self.image, 'green', (self.radius, self.radius), self.radius)
@@ -80,7 +81,7 @@ class Sensor(pygame.sprite.Sprite):
 
     def update(self, position, direction, obstacle):
         # Sensor position should be in front of the head, at a distance of 'CURVATURE_RADIUS'
-        self.rect.center = position + CURVATURE_RADIUS*direction / np.linalg.norm(direction)
+        self.rect.center = position + (CURVATURE_RADIUS + 5)*direction / np.linalg.norm(direction)
         # if pygame.mouse.get_pos():
         #     self.rect.center = pygame.mouse.get_pos()
 
@@ -90,14 +91,14 @@ class Sensor(pygame.sprite.Sprite):
 
     def get_move(self, head_position, direction, collision_mask):
         if collision_mask.count() == 0:
-            return
+            return None, None
         impact_position = collision_mask.centroid() # Coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche).
         impact_absolute_position = np.array(self.rect.topleft) + impact_position
         head_to_centroid_vec = impact_absolute_position - head_position
         signed_angle = np.arctan2(head_to_centroid_vec[1], head_to_centroid_vec[0]) - np.arctan2(direction[1], direction[0])
         if signed_angle > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
-            return LEFT
-        return RIGHT
+            return LEFT, head_to_centroid_vec
+        return RIGHT, head_to_centroid_vec
 
 
 class Obstacle(pygame.sprite.Sprite):
@@ -115,7 +116,7 @@ clock = pygame.time.Clock()
 screen = pygame.display.set_mode((BOARD["width"], BOARD["height"]))
 sensor = pygame.sprite.GroupSingle(Sensor())
 obstacle = pygame.sprite.GroupSingle(Obstacle())
-positions, moves, old_im, same_frame_cpt = reset()
+positions, moves, collions_vecs, old_im, same_frame_cpt = reset()
 
 # Main loop
 while True:
@@ -131,8 +132,8 @@ while True:
     if (board == old_im).all():
         same_frame_cpt += 1
         # If the screen has not changed for a long time, it's most likely game over
-        if same_frame_cpt == 20:
-            positions, moves, old_im, same_frame_cpt = reset()
+        if same_frame_cpt >= MAX_FPS:
+            positions, moves, collions_vecs, old_im, same_frame_cpt = reset()
         continue
 
     # Try to find the head position (based on successive images difference)
@@ -154,8 +155,9 @@ while True:
     overlap_mask = sensor.sprite.get_collision_mask(obstacle)
     collision = overlap_mask.count() > 0
 
-    move = sensor.sprite.get_move(head_position, direction, overlap_mask)
+    move, collion_vec = sensor.sprite.get_move(head_position, direction, overlap_mask)
     moves.append(move)
+    collions_vecs.append(collion_vec)
     apply_move(move)
 
     # Drawing
@@ -165,15 +167,15 @@ while True:
         overlap_surf = overlap_mask.to_surface(setcolor='red')
         overlap_surf.set_colorkey((0, 0, 0))
         screen.blit(overlap_surf, sensor.sprite.rect)
-    for posisition, move in zip(positions, moves):
+    for position, move, collision_vec in zip(positions, moves, collions_vecs):
+        pygame.draw.circle(screen, 'gray', position, 1)
+        if move is None:
+            continue
         if move == LEFT:
-            color = 'blue'
-        elif move == RIGHT:
             color = 'red'
-        else:
-            color = 'gray'
-        pygame.draw.circle(screen, color, posisition, 1)
-
+        elif move == RIGHT:
+            color = 'blue'
+        pygame.draw.line(screen, color, position, position+collision_vec, 1)
     pygame.display.update()
     pygame.display.set_caption(f"{int(clock.get_fps())} FPS")
-    clock.tick()
+    clock.tick(MAX_FPS)
