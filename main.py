@@ -8,10 +8,11 @@ import pygame
 
 
 # BOARD = {"top": 337, "left": 433, "width": 748, "height": 748}
-BOARD = {"top": 336, "left": 432, "width": 750, "height": 750}
+# BOARD = {"top": 336, "left": 432, "width": 750, "height": 750}
+BOARD = {"top": 65, "left": 924, "width": 1285, "height": 1285, "mon": 1}
 LEFT_KEY = 'a'
 RIGHT_KEY = 'z'
-CURVATURE_RADIUS = 30
+CURVATURE_RADIUS = 40
 MAX_FPS = 60
 
 LEFT, RIGHT = -1, 1
@@ -29,9 +30,9 @@ def get_head_position(current_board, previous_board):
 
     diff = new_im - old_im
 
-    # kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], np.uint8)
-    # diff = cv2.morphologyEx(diff, cv2.MORPH_OPEN, kernel)
-    # diff = cv2.erode(diff, kernel, iterations=1)
+    kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], np.uint8)
+    diff = cv2.morphologyEx(diff, cv2.MORPH_OPEN, kernel)
+    diff = cv2.erode(diff, kernel, iterations=1)
     # diff = cv2.dilate(diff, kernel, iterations=1)
 
     # num_labels, labels_im = cv2.connectedComponents(diff)
@@ -42,12 +43,13 @@ def get_head_position(current_board, previous_board):
     return np.array([int(M["m01"] / M["m00"]), int(M["m10"] / M["m00"])])
 
 def get_direction(positions):
-    last_position_ind = 10
-    if len(positions) < last_position_ind:
-        direction = positions[-1] - positions[-2]
-    else:
-        direction = positions[-1] - positions[-last_position_ind]
-    return direction
+    # last_position_ind = 3
+    # if len(positions) < last_position_ind:
+    #     direction = positions[-1] - positions[-2]
+    # else:
+    #     direction = positions[-1] - positions[-last_position_ind]
+    # return direction
+    return positions[-1] - positions[-2]
 
 def apply_move(move):
     if move == LEFT:
@@ -81,7 +83,7 @@ class Sensor(pygame.sprite.Sprite):
 
     def update(self, position, direction, obstacle):
         # Sensor position should be in front of the head, at a distance of 'CURVATURE_RADIUS'
-        self.rect.center = position + (CURVATURE_RADIUS + 5)*direction / np.linalg.norm(direction)
+        self.rect.center = position + (CURVATURE_RADIUS + 10)*direction / np.linalg.norm(direction)
         # if pygame.mouse.get_pos():
         #     self.rect.center = pygame.mouse.get_pos()
 
@@ -89,16 +91,31 @@ class Sensor(pygame.sprite.Sprite):
         offset = obstacle.sprite.rect.x - self.rect.x, obstacle.sprite.rect.y - self.rect.y
         return self.mask.overlap_mask(obstacle.sprite.mask, offset)
 
+    def _get_closest_impact_position(self, head_position, collision_mask):
+        # impact_position = collision_mask.centroid()
+        # Seems we can not access the mask coordinates, even by casting it to np.array
+        width, height = collision_mask.get_size()
+        collisions_points = [[x, y] for x in range(width) for y in range(height) if collision_mask.get_at((x, y))]
+
+        # Passsage des coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche) vers les coordonnees dans l'ecran
+        impact_absolute_positions = np.array(self.rect.topleft) + np.array(collisions_points)
+        distances = np.linalg.norm(impact_absolute_positions - head_position, axis=1)
+        closest_point_index = np.argmin(distances)
+        impact_absolute_position = impact_absolute_positions[closest_point_index]
+        impact_distance = distances[closest_point_index]
+        return impact_absolute_position, impact_distance
+
     def get_move(self, head_position, direction, collision_mask):
         if collision_mask.count() == 0:
             return None, None
-        impact_position = collision_mask.centroid() # Coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche).
-        impact_absolute_position = np.array(self.rect.topleft) + impact_position
-        head_to_centroid_vec = impact_absolute_position - head_position
-        signed_angle = np.arctan2(head_to_centroid_vec[1], head_to_centroid_vec[0]) - np.arctan2(direction[1], direction[0])
+
+        impact_position, impact_distance = self._get_closest_impact_position(head_position, collision_mask)
+
+        head_to_impact_vec = impact_position - head_position
+        signed_angle = np.arctan2(head_to_impact_vec[1], head_to_impact_vec[0]) - np.arctan2(direction[1], direction[0])
         if signed_angle > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
-            return LEFT, head_to_centroid_vec
-        return RIGHT, head_to_centroid_vec
+            return LEFT, head_to_impact_vec
+        return RIGHT, head_to_impact_vec
 
 
 class Obstacle(pygame.sprite.Sprite):
@@ -132,7 +149,7 @@ while True:
     if (board == old_im).all():
         same_frame_cpt += 1
         # If the screen has not changed for a long time, it's most likely game over
-        if same_frame_cpt >= MAX_FPS:
+        if same_frame_cpt >= 1.5*MAX_FPS:
             positions, moves, collions_vecs, old_im, same_frame_cpt = reset()
         continue
 
@@ -141,7 +158,7 @@ while True:
     try:
         head_position = get_head_position(board, old_im)
     except (ValueError, ZeroDivisionError) as e:
-        print(f"Cant find the head ({e})")
+        # print(f"Cant find the head ({e})")
         continue
 
     old_im = board.copy()
