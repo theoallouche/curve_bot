@@ -19,7 +19,7 @@ LEFT, RIGHT = -1, 1
 
 def get_rgb_board(board_position):
     with mss.mss() as sct:
-        return np.transpose(np.flip(np.array(sct.grab(board_position))[:, :, :3], axis=-1), (1, 0, 2))
+        return np.transpose(np.flip(np.array(sct.grab(board_position))[:, :, :3], -1), (1, 0, 2))
 
 def get_head_position(current_board, previous_board):
     # RGB to gray + binarization
@@ -65,10 +65,10 @@ def apply_move(move):
 def reset():
     positions = [[0, 0]]
     moves = []
-    collions_vecs = []
+    impact_points = []
     old_im = np.zeros((BOARD["width"], BOARD["height"], 3), dtype=np.uint8)
     same_frame_cpt = 0
-    return positions, moves, collions_vecs, old_im, same_frame_cpt
+    return positions, moves, impact_points, old_im, same_frame_cpt
 
 class Sensor(pygame.sprite.Sprite):
 
@@ -80,42 +80,35 @@ class Sensor(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, 'green', (self.radius, self.radius), self.radius)
         self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1,1,1,1))
         self.mask.invert()
+        self.head_position = None
+        self.direction = None
+        self.overlap_mask = None
+        self.impact_point = None
 
-    def update(self, position, direction, obstacle):
-        # Sensor position should be in front of the head, at a distance of 'CURVATURE_RADIUS'
-        self.rect.center = position + (CURVATURE_RADIUS + 10)*direction / np.linalg.norm(direction)
-        # if pygame.mouse.get_pos():
-        #     self.rect.center = pygame.mouse.get_pos()
+    def update(self, head_position, direction, obstacle):
+        self.head_position = head_position
+        self.direction = direction
+        self.rect.center = head_position + (CURVATURE_RADIUS + 10)*direction / np.linalg.norm(direction)
+        self.overlap_mask = self.mask.overlap_mask(obstacle.sprite.mask, (obstacle.sprite.rect.x - self.rect.x, obstacle.sprite.rect.y - self.rect.y))
+        self.impact_point = self._get_closest_impact_position() if self.overlap_mask.count() else None
 
-    def get_collision_mask(self, obstacle):
-        offset = obstacle.sprite.rect.x - self.rect.x, obstacle.sprite.rect.y - self.rect.y
-        return self.mask.overlap_mask(obstacle.sprite.mask, offset)
-
-    def _get_closest_impact_position(self, head_position, collision_mask):
-        # impact_position = collision_mask.centroid()
+    def _get_closest_impact_position(self):
         # Seems we can not access the mask coordinates, even by casting it to np.array
-        width, height = collision_mask.get_size()
-        collisions_points = [[x, y] for x in range(width) for y in range(height) if collision_mask.get_at((x, y))]
-
+        width, height = self.overlap_mask.get_size()
+        collisions_points = [[x, y] for x in range(width) for y in range(height) if self.overlap_mask.get_at((x, y))]
         # Passsage des coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche) vers les coordonnees dans l'ecran
         impact_absolute_positions = np.array(self.rect.topleft) + np.array(collisions_points)
-        distances = np.linalg.norm(impact_absolute_positions - head_position, axis=1)
+        distances = np.linalg.norm(impact_absolute_positions - self.head_position, axis=1)
         closest_point_index = np.argmin(distances)
-        impact_absolute_position = impact_absolute_positions[closest_point_index]
-        impact_distance = distances[closest_point_index]
-        return impact_absolute_position, impact_distance
+        return impact_absolute_positions[closest_point_index]
 
-    def get_move(self, head_position, direction, collision_mask):
-        if collision_mask.count() == 0:
-            return None, None
-
-        impact_position, impact_distance = self._get_closest_impact_position(head_position, collision_mask)
-
-        head_to_impact_vec = impact_position - head_position
-        signed_angle = np.arctan2(head_to_impact_vec[1], head_to_impact_vec[0]) - np.arctan2(direction[1], direction[0])
-        if signed_angle > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
-            return LEFT, head_to_impact_vec
-        return RIGHT, head_to_impact_vec
+    def get_move(self):
+        if self.impact_point is None:
+            return None
+        head_to_impact_vec = self.impact_point - self.head_position
+        if np.cross(self.direction, head_to_impact_vec) > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
+            return LEFT
+        return RIGHT
 
 
 class Obstacle(pygame.sprite.Sprite):
@@ -133,7 +126,7 @@ clock = pygame.time.Clock()
 screen = pygame.display.set_mode((BOARD["width"], BOARD["height"]))
 sensor = pygame.sprite.GroupSingle(Sensor())
 obstacle = pygame.sprite.GroupSingle(Obstacle())
-positions, moves, collions_vecs, old_im, same_frame_cpt = reset()
+positions, moves, impact_points, old_im, same_frame_cpt = reset()
 
 # Main loop
 while True:
@@ -150,7 +143,7 @@ while True:
         same_frame_cpt += 1
         # If the screen has not changed for a long time, it's most likely game over
         if same_frame_cpt >= 1.5*MAX_FPS:
-            positions, moves, collions_vecs, old_im, same_frame_cpt = reset()
+            positions, moves, impact_points, old_im, same_frame_cpt = reset()
         continue
 
     # Try to find the head position (based on successive images difference)
@@ -165,26 +158,24 @@ while True:
 
     positions.append(head_position)
     direction = get_direction(positions)
-
     obstacle.update(board)
     sensor.update(head_position, direction, obstacle)
-
-    overlap_mask = sensor.sprite.get_collision_mask(obstacle)
-    collision = overlap_mask.count() > 0
-
-    move, collion_vec = sensor.sprite.get_move(head_position, direction, overlap_mask)
-    moves.append(move)
-    collions_vecs.append(collion_vec)
+    move = sensor.sprite.get_move()
     apply_move(move)
 
-    # Drawing
     obstacle.draw(screen)
     sensor.draw(screen)
-    if collision:
-        overlap_surf = overlap_mask.to_surface(setcolor='red')
+
+    # Drawing collision surface in red
+    if sensor.sprite.impact_point is not None:
+        overlap_surf = sensor.sprite.overlap_mask.to_surface(setcolor='red')
         overlap_surf.set_colorkey((0, 0, 0))
         screen.blit(overlap_surf, sensor.sprite.rect)
-    for position, move, collision_vec in zip(positions, moves, collions_vecs):
+
+    # Drawing head positions in gray + vectors from head to collision point in blue (left hand side) or red (right hand side)
+    moves.append(move)
+    impact_points.append(sensor.sprite.impact_point)
+    for position, move, impact_point in zip(positions, moves, impact_points):
         pygame.draw.circle(screen, 'gray', position, 1)
         if move is None:
             continue
@@ -192,7 +183,8 @@ while True:
             color = 'red'
         elif move == RIGHT:
             color = 'blue'
-        pygame.draw.line(screen, color, position, position+collision_vec, 1)
+        pygame.draw.line(screen, color, position, impact_point, 1)
+
     pygame.display.update()
     pygame.display.set_caption(f"{int(clock.get_fps())} FPS")
     clock.tick(MAX_FPS)
