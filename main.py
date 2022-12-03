@@ -63,12 +63,15 @@ def apply_move(move):
         keyboard.release(LEFT_KEY)
 
 def reset():
+    apply_move(None)
     positions = [[0, 0]]
     moves = []
     impact_points = []
     old_im = np.zeros((BOARD["width"], BOARD["height"], 3), dtype=np.uint8)
     same_frame_cpt = 0
-    return positions, moves, impact_points, old_im, same_frame_cpt
+    cpt = 0
+    return positions, moves, impact_points, old_im, same_frame_cpt, cpt
+
 
 class Sensor(pygame.sprite.Sprite):
 
@@ -104,7 +107,7 @@ class Sensor(pygame.sprite.Sprite):
 
     def get_move(self):
         if self.impact_point is None:
-            return None
+            return LEFT
         head_to_impact_vec = self.impact_point - self.head_position
         if np.cross(self.direction, head_to_impact_vec) > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
             return LEFT
@@ -126,8 +129,7 @@ clock = pygame.time.Clock()
 screen = pygame.display.set_mode((BOARD["width"], BOARD["height"]))
 sensor = pygame.sprite.GroupSingle(Sensor())
 obstacle = pygame.sprite.GroupSingle(Obstacle())
-positions, moves, impact_points, old_im, same_frame_cpt = reset()
-
+positions, moves, impact_points, old_im, same_frame_cpt, cpt = reset()
 # Main loop
 while True:
     # Handling exit event
@@ -143,7 +145,7 @@ while True:
         same_frame_cpt += 1
         # If the screen has not changed for a long time, it's most likely game over
         if same_frame_cpt >= 1.5*MAX_FPS:
-            positions, moves, impact_points, old_im, same_frame_cpt = reset()
+            positions, moves, impact_points, old_im, same_frame_cpt, cpt = reset()
         continue
 
     # Try to find the head position (based on successive images difference)
@@ -177,7 +179,7 @@ while True:
     impact_points.append(sensor.sprite.impact_point)
     for position, move, impact_point in zip(positions, moves, impact_points):
         pygame.draw.circle(screen, 'gray', position, 1)
-        if move is None:
+        if impact_point is None:
             continue
         if move == LEFT:
             color = 'red'
