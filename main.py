@@ -6,6 +6,7 @@ import mss
 import numpy as np
 import pygame
 
+from sensors import Sensor, CircleSensor, LineSensor
 
 # BOARD = {"top": 337, "left": 433, "width": 748, "height": 748}
 # BOARD = {"top": 336, "left": 432, "width": 750, "height": 750}
@@ -73,46 +74,6 @@ def reset():
     return positions, moves, impact_points, old_im, same_frame_cpt, cpt
 
 
-class Sensor(pygame.sprite.Sprite):
-
-    def __init__(self):
-        super().__init__()
-        self.radius = CURVATURE_RADIUS
-        self.image = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
-        self.rect = self.image.get_rect()
-        pygame.draw.circle(self.image, 'green', (self.radius, self.radius), self.radius)
-        self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1,1,1,1))
-        self.mask.invert()
-        self.head_position = None
-        self.direction = None
-        self.overlap_mask = None
-        self.impact_point = None
-
-    def update(self, head_position, direction, obstacle):
-        self.head_position = head_position
-        self.direction = direction
-        self.rect.center = head_position + (CURVATURE_RADIUS + 10)*direction / np.linalg.norm(direction)
-        self.overlap_mask = self.mask.overlap_mask(obstacle.sprite.mask, (obstacle.sprite.rect.x - self.rect.x, obstacle.sprite.rect.y - self.rect.y))
-        self.impact_point = self._get_closest_impact_position() if self.overlap_mask.count() else None
-
-    def _get_closest_impact_position(self):
-        # Seems we can not access the mask coordinates, even by casting it to np.array
-        width, height = self.overlap_mask.get_size()
-        collisions_points = [[x, y] for x in range(width) for y in range(height) if self.overlap_mask.get_at((x, y))]
-        # Passsage des coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche) vers les coordonnees dans l'ecran
-        impact_absolute_positions = np.array(self.rect.topleft) + np.array(collisions_points)
-        distances = np.linalg.norm(impact_absolute_positions - self.head_position, axis=1)
-        closest_point_index = np.argmin(distances)
-        return impact_absolute_positions[closest_point_index]
-
-    def get_move(self):
-        if self.impact_point is None:
-            return LEFT
-        head_to_impact_vec = self.impact_point - self.head_position
-        if np.cross(self.direction, head_to_impact_vec) > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
-            return LEFT
-        return RIGHT
-
 
 class Obstacle(pygame.sprite.Sprite):
 
@@ -127,7 +88,9 @@ class Obstacle(pygame.sprite.Sprite):
 pygame.init()
 clock = pygame.time.Clock()
 screen = pygame.display.set_mode((BOARD["width"], BOARD["height"]))
-sensor = pygame.sprite.GroupSingle(Sensor())
+# sensor = pygame.sprite.GroupSingle(Sensor(direction=-70, distance=100, height=50, width=10))
+# sensor = pygame.sprite.GroupSingle(LineSensor(direction=-70, distance=100, length=50, width=10))
+sensor = pygame.sprite.GroupSingle(CircleSensor(direction=-70, distance=100, radius=30))
 obstacle = pygame.sprite.GroupSingle(Obstacle())
 positions, moves, impact_points, old_im, same_frame_cpt, cpt = reset()
 # Main loop
