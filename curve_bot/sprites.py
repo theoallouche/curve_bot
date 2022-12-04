@@ -2,8 +2,17 @@ import numpy as np
 import pygame
 
 
+class ObstacleMap(pygame.sprite.Sprite):
 
-LEFT, RIGHT = -1, 1
+    def __init__(self, board_position):
+        super().__init__()
+        self.board_position = board_position
+
+    def update(self, image):
+        self.image = pygame.surfarray.make_surface(image)
+        self.rect = self.image.get_rect(center=(self.board_position["width"]//2, self.board_position["height"]//2))
+        self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1,1,1,1))
+        self.mask.invert()
 
 
 class Sensor(pygame.sprite.Sprite):
@@ -43,14 +52,6 @@ class Sensor(pygame.sprite.Sprite):
         distances = np.linalg.norm(impact_absolute_positions - self.head_position, axis=1)
         closest_point_index = np.argmin(distances)
         return impact_absolute_positions[closest_point_index]
-
-    def get_move(self):
-        if self.impact_point is None:
-            return LEFT
-        head_to_impact_vec = self.impact_point - self.head_position
-        if np.cross(self.direction, head_to_impact_vec) > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
-            return LEFT
-        return RIGHT
 
 
 class LineSensor(Sensor):
