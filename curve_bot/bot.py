@@ -23,6 +23,7 @@ class Bot:
         self.reset()
 
     def reset(self):
+        self.apply_move(None)
         self.head_direction = [1, 0]
         self.head_positions = [[0, 0]]
         self.impact_points = []
@@ -30,9 +31,10 @@ class Bot:
 
     def get_move(self):
         if self.sensor.sprite.impact_point is None:
-            return LEFT
+            return None
         head_to_impact_vec = self.sensor.sprite.impact_point - self.head_positions[-1]
-        if np.cross(self.head_direction, head_to_impact_vec) > 0: # ça tappe à droite dans le sens de la marche, donc on tourne à gauche
+        # If the closest impact point is on the left hand side, turn right. And vice versa.
+        if np.cross(self.head_direction, head_to_impact_vec) > 0:
             return LEFT
         return RIGHT
 

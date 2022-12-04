@@ -47,7 +47,6 @@ class Sensor(pygame.sprite.Sprite):
         # Seems we can not access the mask coordinates, even by casting it to np.array
         width, height = self.overlap_mask.get_size()
         collisions_points = [[x, y] for x in range(width) for y in range(height) if self.overlap_mask.get_at((x, y))]
-        # Passsage des coordonnees dans le réferentiel du rect englobant du sensor ((0, 0) en haut à gauche) vers les coordonnees dans l'ecran
         impact_absolute_positions = np.array(self.rect.topleft) + np.array(collisions_points)
         distances = np.linalg.norm(impact_absolute_positions - self.head_position, axis=1)
         closest_point_index = np.argmin(distances)
