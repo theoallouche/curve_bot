@@ -4,8 +4,7 @@ Curve bot
 
 
 | Pure Python 3 package aiming to create sensor-based bot for the `Curve Crash <https://curvecrash.com/>`_ game.
-| It is only meant for a 1-player game as it can not tell (yet) which curve it has the control on.
-| It uses video flux to try to detect the head position and direction, and sensor around it to anticipate collisions and turn accordingly.
+| It uses video flux to try to segment the obstacle map, and a sensor close to the head to anticipate collisions and turn accordingly.
 
 This is just a sandbox to figure out what could be a good local sensor-based strategy.
 
@@ -23,17 +22,22 @@ Just install the dependencies:
 Getting started
 ~~~~~~~~~~~~~~~
 
+First, you will have to close Chrome and relaunch it with:
+
+.. code-block:: bash
+
+   chrome.exe --remote-debugging-port=9222
+
+
 .. code-block:: python
 
    from curve_bot import Bot, CircleSensor, LineSensor
 
 
-   board_position = {"top": 65, "left": 924, "width": 1285, "height": 1285}
-
    sensor = CircleSensor(direction=0, distance=75, radius=30)
    # sensor = LineSensor(direction=0, distance=105, length=80, width=20)
 
-   bot = Bot(board_position, sensor, left_key='a', right_key='z')
+   bot = Bot(sensor, left_key='a', right_key='z')
    bot.run(framerate=60)
 
 
@@ -41,26 +45,21 @@ Getting started
   :align: center
   :width: 900
 
+The screen zone of the board should be automatically detected. If it is not the case, you can adjust it:
 
-.. note:: Once you launch the script, you should immediately click on the play window to give back the focus. Otherwise the program will start to type into whatever window is focused on !
+
+.. code-block:: python
+
+   bot = Bot(sensor, board_position={"top": 65, "left": 924, "width": 1285, "height": 1285})
+
+
+| Once you launch the script, you should **immediately click on the play window** to give back the focus. Otherwise the program will start to type into whatever window is focused on !
+| The smaller the board, the faster. Lower its size until you have at least ~20 FPS in the program.
+| The board should always be visible and not covered by another window during run.
 
 
 Usage
 =====
-
-
-Define the board position on your screen
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   board_position = {"top": 65, "left": 924, "width": 1285, "height": 1285}
-
-
-| Ensure that the board contains at least a 1-pixel white border (the walls).
-| The smaller the board, the faster. Lower its size until you have at least ~20 FPS in the program.
-| The board should always be visible and not covered by another window during run.
-| Example is the dimension for a 1440p monitor with the game fullscreen (another monitor is used to run the program).
 
 
 Define the sensor

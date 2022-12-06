@@ -4,13 +4,20 @@ import pygame
 
 class ObstacleMap(pygame.sprite.Sprite):
 
-    def __init__(self, board_position):
+    def __init__(self, board_position, wall_width):
         super().__init__()
         self.board_position = board_position
+        self.wall_width = wall_width
+        self.content = np.full((self.board_position["width"] + 2*wall_width,
+                                self.board_position["height"] + 2*wall_width,
+                                3), 255, dtype=np.uint8)
+        self.image = pygame.surfarray.make_surface(self.content)
+        self.rect = self.image.get_rect(center=(self.content.shape[0]//2, self.content.shape[0]//2))
 
     def update(self, image):
-        self.image = pygame.surfarray.make_surface(image)
-        self.rect = self.image.get_rect(center=(self.board_position["width"]//2, self.board_position["height"]//2))
+        self.content[self.wall_width:self.wall_width+self.board_position["width"],
+                        self.wall_width:self.wall_width+self.board_position["height"],:] = image
+        self.image = pygame.surfarray.make_surface(self.content)
         self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1,1,1,1))
         self.mask.invert()
 

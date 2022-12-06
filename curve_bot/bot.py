@@ -13,13 +13,14 @@ LEFT, RIGHT = -1, 1
 
 class Bot:
 
-    def __init__(self, board_position, sensor, left_key='a', right_key='z'):
-        self.board_position = board_position
+    def __init__(self, sensor, board_position=None, left_key='a', right_key='z'):
+        wall_width = 5
+        self.board_analyzer = BoardAnalyzer(board_position, wall_width)
+        self.board_position = self.board_analyzer.on_screen_board_position
         self.left_key = left_key
         self.right_key = right_key
-        self.board_analyzer = BoardAnalyzer(board_position)
         self.sensor = pygame.sprite.GroupSingle(sensor)
-        self.obstacle = pygame.sprite.GroupSingle(ObstacleMap(board_position))
+        self.obstacle = pygame.sprite.GroupSingle(ObstacleMap(self.board_position, wall_width))
         self.reset()
 
     def reset(self):
@@ -76,8 +77,7 @@ class Bot:
     def run(self, framerate=60):
         clock = pygame.time.Clock()
         pygame.init()
-        screen = pygame.display.set_mode((self.board_position["width"], self.board_position["height"]))
-
+        screen = pygame.display.set_mode((self.obstacle.sprite.content.shape[:2]))
         while True:
             # Handling exit event
             for event in pygame.event.get():
@@ -85,27 +85,26 @@ class Bot:
                     pygame.quit()
                     sys.exit()
 
-            # Do nothing if head has not been found
             status = self.board_analyzer.update()
-            if status != AnalysisStatus.SUCCESS:
-                if status == AnalysisStatus.GAME_OVER:
-                    self.reset()
+            if status == AnalysisStatus.GAME_OVER:
+                self.reset()
                 continue
-
+            if status == AnalysisStatus.UNCHANGED:
+                continue
             # Update obstacle map and get head position and direction from board analyze
-            self.obstacle.update(self.board_analyzer.current_rgb_board)
+            self.obstacle.update(self.board_analyzer.rgb_board)
             head_position = self.board_analyzer.head_position
             self.head_direction = head_position - self.head_positions[-1]
-            self.head_positions.append(head_position)
+            if status == AnalysisStatus.MOVING:
+                self.head_positions.append(head_position)
+                # Update sensor position and thus the collision mask
+                self.sensor.update(head_position, self.head_direction, self.obstacle)
+                self.impact_points.append(self.sensor.sprite.impact_point)
 
-            # Update sensor position and thus the collision mask
-            self.sensor.update(head_position, self.head_direction, self.obstacle)
-            self.impact_points.append(self.sensor.sprite.impact_point)
-
-            # Apply move accordingly
-            move = self.get_move()
-            self.apply_move(move)
-            self.moves.append(move)
+                # Apply move accordingly
+                move = self.get_move()
+                self.apply_move(move)
+                self.moves.append(move)
 
             # Draw
             fps = clock.get_fps()

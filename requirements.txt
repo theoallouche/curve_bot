@@ -1,5 +1,5 @@
 numpy
-opencv-python
 pygame
+selenium
 mss
 keyboard
