@@ -8,17 +8,18 @@ class ObstacleMap(pygame.sprite.Sprite):
         super().__init__()
         self.board_position = board_position
         self.wall_width = wall_width
-        self.content = np.full((self.board_position["width"] + 2*wall_width,
-                                self.board_position["height"] + 2*wall_width,
-                                3), 255, dtype=np.uint8)
-        self.image = pygame.surfarray.make_surface(self.content)
-        self.rect = self.image.get_rect(center=(self.content.shape[0]//2, self.content.shape[0]//2))
+        self.empty_board = np.full((self.board_position["width"] + 2*wall_width,
+                                    self.board_position["height"] + 2*wall_width,
+                                    3), 255, dtype=np.uint8)
+        self.empty_board[self.wall_width:self.wall_width + self.board_position["width"],
+                         self.wall_width:self.wall_width + self.board_position["height"], :] = 0
+        self.image = pygame.surfarray.make_surface(self.empty_board)
+        self.rect = self.image.get_rect(center=(self.empty_board.shape[0]//2, self.empty_board.shape[0]//2))
 
-    def update(self, image):
-        self.content[self.wall_width:self.wall_width+self.board_position["width"],
-                        self.wall_width:self.wall_width+self.board_position["height"],:] = image
-        self.image = pygame.surfarray.make_surface(self.content)
-        self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1,1,1,1))
+    def update(self, particles):
+        self.image = pygame.surfarray.make_surface(self.empty_board)
+        pygame.draw.lines(self.image, 'purple', False, particles, width=10)
+        self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1, 1, 1, 1))
         self.mask.invert()
 
 
@@ -72,3 +73,10 @@ class CircleSensor(Sensor):
     def __init__(self, direction=0, distance=60, radius=50):
         super().__init__(direction=direction, distance=distance, height=2*radius, width=2*radius)
         pygame.draw.circle(self.image, 'green', (radius, radius), radius)
+
+
+class ArcSensor(Sensor):
+
+    def __init__(self, start_angle=-0.5, stop_angle=0.5, distance=60, radius=50):
+        super().__init__(direction=0, distance=distance, height=100, width=100)
+        pygame.draw.arc(self.image, 'green', (-distance/2, distance/2, distance, distance), start_angle, stop_angle, width=3)

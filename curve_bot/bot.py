@@ -77,7 +77,7 @@ class Bot:
     def run(self, framerate=60):
         clock = pygame.time.Clock()
         pygame.init()
-        screen = pygame.display.set_mode((self.obstacle.sprite.content.shape[:2]))
+        screen = pygame.display.set_mode((self.obstacle.sprite.empty_board.shape[:2]))
         while True:
             # Handling exit event
             for event in pygame.event.get():
@@ -92,7 +92,7 @@ class Bot:
             if status == AnalysisStatus.UNCHANGED:
                 continue
             # Update obstacle map and get head position and direction from board analyze
-            self.obstacle.update(self.board_analyzer.rgb_board)
+            self.obstacle.update(self.board_analyzer.particles)
             head_position = self.board_analyzer.head_position
             self.head_direction = head_position - self.head_positions[-1]
             if status == AnalysisStatus.MOVING:

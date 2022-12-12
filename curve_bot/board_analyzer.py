@@ -1,6 +1,5 @@
 from enum import IntEnum
 
-import mss
 import numpy as np
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -21,7 +20,7 @@ class BoardAnalyzer:
             board_position = self._find_board()
         self.on_screen_board_position = board_position
         self.head_position = None
-        self.rgb_board = None
+        self.particles = [(0, 0), (1, 1)]
         self.wall_width = wall_width
         self.on_game_board_position = self.driver.execute_script("const { fieldHeight, fieldWidth } = client.room.game.gameSettings; return {fieldHeight, fieldWidth}")
 
@@ -38,17 +37,24 @@ class BoardAnalyzer:
                 "width": element.size["width"] - 2*border_witdh,
                 "height": element.size["height"] - 2*border_witdh}
 
+    def _to_screen_coordinates(self, x, y):
+        x = x * self.on_screen_board_position['width'] / self.on_game_board_position['fieldWidth'] + self.wall_width
+        y = y * self.on_screen_board_position['height'] / self.on_game_board_position['fieldWidth'] + self.wall_width
+        return x, y
+
     def update(self):
         infos = self.driver.execute_script("const { x, y, angle, isAlive, numParticles } = client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].state; return {x, y, angle, isAlive, numParticles}")
         if not infos['isAlive']:
             return AnalysisStatus.GAME_OVER
-        head_position = np.array([infos['x'] * self.on_screen_board_position['width'] / self.on_game_board_position['fieldWidth'] + self.wall_width,
-                                  infos['y'] * self.on_screen_board_position['height'] / self.on_game_board_position['fieldWidth'] + self.wall_width])
+        head_position = np.array(self._to_screen_coordinates(infos['x'], infos['y']))
         if (self.head_position == head_position).all():
             return AnalysisStatus.UNCHANGED
         self.head_position = head_position
-        with mss.mss() as sct:
-            self.rgb_board = np.transpose(np.flip(np.array(sct.grab(self.on_screen_board_position))[:, :, :3], -1), (1, 0, 2))
-        if infos['numParticles']:
+
+        particles = self.driver.execute_script("return Array.from(client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].particles).map(({x1, y1}) => [x1, y1]);")
+        if len(particles) > 1:
+            particles = np.array(particles)
+            x_particles, y_particles = self._to_screen_coordinates(particles[:, 0], particles[:, 1])
+            self.particles = list(zip(x_particles, y_particles))
             return AnalysisStatus.MOVING
         return AnalysisStatus.FLYING
