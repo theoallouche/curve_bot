@@ -16,13 +16,17 @@ class BoardAnalyzer:
         chrome_options = Options()
         chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
         self.driver = webdriver.Chrome(chrome_options=chrome_options)
+        print(self.driver.title)
         if board_position is None:
             board_position = self._find_board()
         self.on_screen_board_position = board_position
         self.head_position = None
-        self.particles = [(0, 0), (1, 1)]
+        self.particle = [0, 0]
         self.wall_width = wall_width
         self.on_game_board_position = self.driver.execute_script("const { fieldHeight, fieldWidth } = client.room.game.gameSettings; return {fieldHeight, fieldWidth}")
+
+    # def _reset(self):$
+
 
     def _find_board(self):
         element = self.driver.find_element(By.ID, 'game-map')
@@ -44,6 +48,7 @@ class BoardAnalyzer:
 
     def update(self):
         infos = self.driver.execute_script("const { x, y, angle, isAlive, numParticles } = client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].state; return {x, y, angle, isAlive, numParticles}")
+        # print(infos)
         if not infos['isAlive']:
             return AnalysisStatus.GAME_OVER
         head_position = np.array(self._to_screen_coordinates(infos['x'], infos['y']))
@@ -51,10 +56,9 @@ class BoardAnalyzer:
             return AnalysisStatus.UNCHANGED
         self.head_position = head_position
 
-        particles = self.driver.execute_script("return Array.from(client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].particles).map(({x1, y1}) => [x1, y1]);")
-        if len(particles) > 1:
-            particles = np.array(particles)
-            x_particles, y_particles = self._to_screen_coordinates(particles[:, 0], particles[:, 1])
-            self.particles = list(zip(x_particles, y_particles))
+        # particles = self.driver.execute_script("return Array.from(client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].particles).map(({x1, y1}) => [x1, y1]);")
+        if infos['numParticles'] > 1:
+            particle = self.driver.execute_script("const { x1, y1 } = client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].state.lastParticle; return {x1, y1};")
+            self.particle = np.array(self._to_screen_coordinates(particle['x1'], particle['y1']))
             return AnalysisStatus.MOVING
         return AnalysisStatus.FLYING

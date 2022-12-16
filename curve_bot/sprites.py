@@ -16,9 +16,13 @@ class ObstacleMap(pygame.sprite.Sprite):
         self.image = pygame.surfarray.make_surface(self.empty_board)
         self.rect = self.image.get_rect(center=(self.empty_board.shape[0]//2, self.empty_board.shape[0]//2))
 
-    def update(self, particles):
+    def reset(self):
         self.image = pygame.surfarray.make_surface(self.empty_board)
-        pygame.draw.lines(self.image, 'purple', False, particles, width=10)
+        self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1, 1, 1, 1))
+        self.mask.invert()
+
+    def update(self, particle):
+        pygame.draw.circle(self.image, 'purple', (particle[0], particle[1]), 5)
         self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1, 1, 1, 1))
         self.mask.invert()
 
@@ -28,6 +32,7 @@ class Sensor(pygame.sprite.Sprite):
     def __init__(self, direction=0, distance=60, height=50, width=10):
         super().__init__()
         self.image = pygame.Surface((width, height), pygame.SRCALPHA)
+        self.image.set_colorkey((0, 0, 0, 0))
         self.original_image = self.image
         self.rect = self.image.get_rect()
 

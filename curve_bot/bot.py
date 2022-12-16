@@ -24,6 +24,7 @@ class Bot:
         self.reset()
 
     def reset(self):
+        self.obstacle.sprite.reset()
         self.apply_move(None)
         self.head_direction = [1, 0]
         self.head_positions = [[0, 0]]
@@ -32,7 +33,7 @@ class Bot:
 
     def get_move(self):
         if self.sensor.sprite.impact_point is None:
-            return None
+            return LEFT
         head_to_impact_vec = self.sensor.sprite.impact_point - self.head_positions[-1]
         # If the closest impact point is on the left hand side, turn right. And vice versa.
         if np.cross(self.head_direction, head_to_impact_vec) > 0:
@@ -60,16 +61,18 @@ class Bot:
             overlap_surf.set_colorkey((0, 0, 0))
             screen.blit(overlap_surf, self.sensor.sprite.rect)
 
-        # Head positions in gray + vectors from head to collision point in blue (left hand side) or red (right hand side)
-        for position, move, impact_point in zip(self.head_positions, self.moves, self.impact_points):
-            pygame.draw.circle(screen, 'gray', position, 1)
-            if impact_point is None:
-                continue
-            if move == LEFT:
-                color = 'red'
-            elif move == RIGHT:
-                color = 'blue'
-            pygame.draw.line(screen, color, position, impact_point, 1)
+        # Head positions in gray
+        pygame.draw.circle(screen, 'gray', self.head_positions[-1], 1)
+
+        # Vector from head to collision point in blue (left hand side) or red (right hand side)
+        if not self.impact_points or self.impact_points[-1] is None:
+            pass
+        else:
+            if self.moves[-1] == LEFT:
+                color = 'red' # (255, 0, 0, 255)#
+            elif self.moves[-1] == RIGHT:
+                color = 'blue' # (0, 0, 255, 255) #
+            pygame.draw.line(screen, color, self.head_positions[-1], self.impact_points[-1], 3)
 
         pygame.display.update()
         pygame.display.set_caption(f"{int(fps)} FPS")
@@ -89,10 +92,13 @@ class Bot:
             if status == AnalysisStatus.GAME_OVER:
                 self.reset()
                 continue
+            # if status == AnalysisStatus.FLYING:
+            #     self.reset()
+            #     continue
             if status == AnalysisStatus.UNCHANGED:
                 continue
             # Update obstacle map and get head position and direction from board analyze
-            self.obstacle.update(self.board_analyzer.particles)
+            self.obstacle.update(self.board_analyzer.particle)
             head_position = self.board_analyzer.head_position
             self.head_direction = head_position - self.head_positions[-1]
             if status == AnalysisStatus.MOVING:
