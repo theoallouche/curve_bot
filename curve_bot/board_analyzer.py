@@ -1,6 +1,9 @@
 from enum import IntEnum
+from base64 import b64decode
+from io import BytesIO
 
 import numpy as np
+from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -12,53 +15,54 @@ class AnalysisStatus(IntEnum):
 
 class BoardAnalyzer:
 
-    def __init__(self, board_position, wall_width):
+    def __init__(self):
         chrome_options = Options()
         chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
         self.driver = webdriver.Chrome(chrome_options=chrome_options)
-        print(self.driver.title)
-        if board_position is None:
-            board_position = self._find_board()
-        self.on_screen_board_position = board_position
+        print(f"Connected to '{self.driver.title}' tab")
+
+        canvas = self.driver.find_element(By.ID, 'game-map')
+
+        border_width = int(canvas.value_of_css_property('border-width').replace("px", ""))
+        native_board_dims = self.driver.execute_script("const { fieldHeight, fieldWidth } = client.room.game.gameSettings; return {fieldHeight, fieldWidth}")
+        self.board_dims = {"native_width": native_board_dims["fieldWidth"],
+                           "native_height": native_board_dims["fieldHeight"],
+                           "native_wall_width": border_width,
+                           "display_width": canvas.size["width"] - 2 * border_width,
+                           "display_height": canvas.size["height"] - 2 * border_width}
+
         self.head_position = None
-        self.particle = [0, 0]
-        self.wall_width = wall_width
-        self.on_game_board_position = self.driver.execute_script("const { fieldHeight, fieldWidth } = client.room.game.gameSettings; return {fieldHeight, fieldWidth}")
 
-    # def _reset(self):$
+        self.driver.execute_script("""
+            const canvas = document.getElementById("game-map");
+            const newCanvas = canvas.cloneNode();
+            canvas.after(newCanvas);
 
-
-    def _find_board(self):
-        element = self.driver.find_element(By.ID, 'game-map')
-        # Assume there is equal amount of browser chrome on the left and right sides of the screen.
-        canvas_x_offset = self.driver.execute_script("return window.screenX + (window.outerWidth - window.innerWidth) / 2 - window.scrollX;")
-        # Assume all the browser chrome is on the top of the screen and none on the bottom.
-        canvas_y_offset = self.driver.execute_script("return window.screenY + (window.outerHeight - window.innerHeight) - window.scrollY;")
-        str_border_width = element.value_of_css_property('border-width')
-        border_witdh = int(str_border_width.replace("px", ""))
-        return {"top": element.rect["y"] + canvas_y_offset + border_witdh,
-                "left": element.rect["x"] + canvas_x_offset + border_witdh,
-                "width": element.size["width"] - 2*border_witdh,
-                "height": element.size["height"] - 2*border_witdh}
+            document.canvas = canvas;
+            document.ctx = newCanvas.getContext("2d");
+        """)
+        # # ou getContext("webgl", {preserveDrawingBuffer: true});
+        # self.driver.execute_script('document.canvas = document.getElementById("game-map");')
 
     def _to_screen_coordinates(self, x, y):
-        x = x * self.on_screen_board_position['width'] / self.on_game_board_position['fieldWidth'] + self.wall_width
-        y = y * self.on_screen_board_position['height'] / self.on_game_board_position['fieldWidth'] + self.wall_width
+        x = x * self.board_dims['display_width'] / self.board_dims['native_width'] + 1 # 1pixel offset for the wall
+        y = y * self.board_dims['display_height'] / self.board_dims['native_height'] + 1
         return x, y
+
+    def get_rgb_board(self):
+        data_url = self.driver.execute_script("return document.canvas.toDataURL();")
+        data_str = data_url.split(",")[1]
+        im = Image.open(BytesIO(b64decode(data_str)))
+        return np.transpose(np.array(im)[:, :, :3], (1, 0, 2))
 
     def update(self):
         infos = self.driver.execute_script("const { x, y, angle, isAlive, numParticles } = client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].state; return {x, y, angle, isAlive, numParticles}")
-        # print(infos)
         if not infos['isAlive']:
             return AnalysisStatus.GAME_OVER
         head_position = np.array(self._to_screen_coordinates(infos['x'], infos['y']))
         if (self.head_position == head_position).all():
             return AnalysisStatus.UNCHANGED
         self.head_position = head_position
-
-        # particles = self.driver.execute_script("return Array.from(client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].particles).map(({x1, y1}) => [x1, y1]);")
         if infos['numParticles'] > 1:
-            particle = self.driver.execute_script("const { x1, y1 } = client.room.game.round.players.find(p => p.isMyPlayer).getCurves()[0].state.lastParticle; return {x1, y1};")
-            self.particle = np.array(self._to_screen_coordinates(particle['x1'], particle['y1']))
             return AnalysisStatus.MOVING
         return AnalysisStatus.FLYING

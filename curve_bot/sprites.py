@@ -4,25 +4,17 @@ import pygame
 
 class ObstacleMap(pygame.sprite.Sprite):
 
-    def __init__(self, board_position, wall_width):
+    def __init__(self, board_dims):
         super().__init__()
-        self.board_position = board_position
-        self.wall_width = wall_width
-        self.empty_board = np.full((self.board_position["width"] + 2*wall_width,
-                                    self.board_position["height"] + 2*wall_width,
-                                    3), 255, dtype=np.uint8)
-        self.empty_board[self.wall_width:self.wall_width + self.board_position["width"],
-                         self.wall_width:self.wall_width + self.board_position["height"], :] = 0
-        self.image = pygame.surfarray.make_surface(self.empty_board)
-        self.rect = self.image.get_rect(center=(self.empty_board.shape[0]//2, self.empty_board.shape[0]//2))
+        # Obstacle will be canvas content with a 1pixel wide wall all around
+        self.obstacle = np.full((board_dims["display_width"] + 2, board_dims["display_height"] + 2, 3), 255, dtype=np.uint8)
+        self.obstacle[1:-1, 1:-1, :] = 0
+        self.image = pygame.surfarray.make_surface(self.obstacle)
+        self.rect = self.image.get_rect(center=(self.obstacle.shape[0]//2, self.obstacle.shape[0]//2))
 
-    def reset(self):
-        self.image = pygame.surfarray.make_surface(self.empty_board)
-        self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1, 1, 1, 1))
-        self.mask.invert()
-
-    def update(self, particle):
-        pygame.draw.circle(self.image, 'purple', (particle[0], particle[1]), 5)
+    def update(self, rgb_board):
+        self.obstacle[1:-1, 1:-1, :] = rgb_board
+        self.image = pygame.surfarray.make_surface(self.obstacle)
         self.mask = pygame.mask.from_threshold(self.image, color=(0, 0, 0), threshold=(1, 1, 1, 1))
         self.mask.invert()
 

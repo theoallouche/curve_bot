@@ -1,4 +1,5 @@
 numpy
 pygame
 selenium
+Pillow
 keyboard

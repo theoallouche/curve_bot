@@ -45,17 +45,9 @@ First, you will have to close Chrome and relaunch it with:
   :align: center
   :width: 900
 
-The screen zone of the board should be automatically detected. If it is not the case, you can adjust it:
-
-
-.. code-block:: python
-
-   bot = Bot(sensor, board_position={"top": 65, "left": 924, "width": 1285, "height": 1285})
-
 
 | Once you launch the script, you should **immediately click on the play window** to give back the focus. Otherwise the program will start to type into whatever window is focused on !
 | The smaller the board, the faster. Lower its size until you have at least ~20 FPS in the program.
-| The board should always be visible and not covered by another window during run.
 
 
 Usage

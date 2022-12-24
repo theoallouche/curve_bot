@@ -13,18 +13,16 @@ LEFT, RIGHT = -1, 1
 
 class Bot:
 
-    def __init__(self, sensor, board_position=None, left_key='a', right_key='z'):
-        wall_width = 5
-        self.board_analyzer = BoardAnalyzer(board_position, wall_width)
-        self.board_position = self.board_analyzer.on_screen_board_position
+    def __init__(self, sensor, left_key='a', right_key='z'):
         self.left_key = left_key
         self.right_key = right_key
+        self.board_analyzer = BoardAnalyzer()
         self.sensor = pygame.sprite.GroupSingle(sensor)
-        self.obstacle = pygame.sprite.GroupSingle(ObstacleMap(self.board_position, wall_width))
+        self.obstacle = pygame.sprite.GroupSingle(ObstacleMap(self.board_analyzer.board_dims))
         self.reset()
 
     def reset(self):
-        self.obstacle.sprite.reset()
+        self.obstacle.sprite.update(0)
         self.apply_move(None)
         self.head_direction = [1, 0]
         self.head_positions = [[0, 0]]
@@ -55,6 +53,11 @@ class Bot:
         self.obstacle.draw(screen)
         self.sensor.draw(screen)
 
+        script = f"""document.ctx.clearRect(0, 0, {self.board_analyzer.board_dims["native_width"]}, {self.board_analyzer.board_dims["native_height"]});
+        document.ctx.fillStyle = "rgb(200, 0, 0)";
+        document.ctx.fillRect{*self.sensor.sprite.rect,};"""
+        self.board_analyzer.driver.execute_script(script)
+
         # Collision surface in red
         if self.sensor.sprite.impact_point is not None:
             overlap_surf = self.sensor.sprite.overlap_mask.to_surface(setcolor='red')
@@ -69,9 +72,9 @@ class Bot:
             pass
         else:
             if self.moves[-1] == LEFT:
-                color = 'red' # (255, 0, 0, 255)#
+                color = 'red'
             elif self.moves[-1] == RIGHT:
-                color = 'blue' # (0, 0, 255, 255) #
+                color = 'blue'
             pygame.draw.line(screen, color, self.head_positions[-1], self.impact_points[-1], 3)
 
         pygame.display.update()
@@ -80,7 +83,7 @@ class Bot:
     def run(self, framerate=60):
         clock = pygame.time.Clock()
         pygame.init()
-        screen = pygame.display.set_mode((self.obstacle.sprite.empty_board.shape[:2]))
+        screen = pygame.display.set_mode((self.obstacle.sprite.obstacle.shape[:2]))
         while True:
             # Handling exit event
             for event in pygame.event.get():
@@ -98,7 +101,8 @@ class Bot:
             if status == AnalysisStatus.UNCHANGED:
                 continue
             # Update obstacle map and get head position and direction from board analyze
-            self.obstacle.update(self.board_analyzer.particle)
+            rgb_board = self.board_analyzer.get_rgb_board()
+            self.obstacle.update(rgb_board)
             head_position = self.board_analyzer.head_position
             self.head_direction = head_position - self.head_positions[-1]
             if status == AnalysisStatus.MOVING:
@@ -117,4 +121,3 @@ class Bot:
             self.draw(screen, fps)
 
             clock.tick(framerate)
-
