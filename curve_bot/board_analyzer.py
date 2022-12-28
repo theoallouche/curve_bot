@@ -22,24 +22,44 @@ class BoardAnalyzer:
         print(f"Connected to '{self.driver.title}' tab")
 
         canvas = self.driver.find_element(By.ID, 'game-map')
+        dims = self.driver.execute_script("const { width, height } = document.getElementById('game-map'); return {width, height}")
 
         border_width = int(canvas.value_of_css_property('border-width').replace("px", ""))
         native_board_dims = self.driver.execute_script("const { fieldHeight, fieldWidth } = client.room.game.gameSettings; return {fieldHeight, fieldWidth}")
         self.board_dims = {"native_width": native_board_dims["fieldWidth"],
                            "native_height": native_board_dims["fieldHeight"],
                            "native_wall_width": border_width,
-                           "display_width": canvas.size["width"] - 2 * border_width,
-                           "display_height": canvas.size["height"] - 2 * border_width}
+                           "display_width": dims["width"] ,
+                           "display_height": dims["height"] }
 
         self.head_position = None
 
         self.driver.execute_script("""
+
+            const tmp = document.getElementById("clone-game-map");
+            if (tmp) tmp.parentNode.removeChild(tmp);
+
             const canvas = document.getElementById("game-map");
             const newCanvas = canvas.cloneNode();
+            newCanvas.setAttribute("id", "clone-game-map")
             canvas.after(newCanvas);
 
             document.canvas = canvas;
             document.ctx = newCanvas.getContext("2d");
+
+            setInterval(() => {
+                document.canvas.toBlob(b => {
+                    b.arrayBuffer().then(arr => {
+                        document.canvasBuffer = arr;
+                    })
+                });
+            }, 100)
+            document.setBlob = () => {
+                document.canvas.toBlob(b => {
+                    document.blob = b;
+                });
+                return document.blob;
+            };
         """)
         # # ou getContext("webgl", {preserveDrawingBuffer: true});
         # self.driver.execute_script('document.canvas = document.getElementById("game-map");')
@@ -50,9 +70,15 @@ class BoardAnalyzer:
         return x, y
 
     def get_rgb_board(self):
-        data_url = self.driver.execute_script("return document.canvas.toDataURL();")
-        data_str = data_url.split(",")[1]
-        im = Image.open(BytesIO(b64decode(data_str)))
+        blob = self.driver.execute_script("""
+            return document.canvasBuffer;
+            //return new Uint8Array(document.canvasBuffer);
+        """)
+        #data_url = self.driver.execute_script("return document.canvas.toDataURL();")
+        #data_str = data_url.split(",")[1]
+        #im = Image.open(BytesIO(b64decode(data_str)))
+        Image.open(BytesIO(blob))
+        im = Image.open(blob)
         return np.transpose(np.array(im)[:, :, :3], (1, 0, 2))
 
     def update(self):

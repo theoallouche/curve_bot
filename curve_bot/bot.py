@@ -1,7 +1,7 @@
 import sys
 
 import numpy as np
-import keyboard
+#import keyboard
 import pygame
 
 from .sprites import ObstacleMap
@@ -23,7 +23,7 @@ class Bot:
 
     def reset(self):
         self.obstacle.sprite.update(0)
-        self.apply_move(None)
+        #self.apply_move(None)
         self.head_direction = [1, 0]
         self.head_positions = [[0, 0]]
         self.impact_points = []
@@ -38,22 +38,11 @@ class Bot:
             return LEFT
         return RIGHT
 
-    def apply_move(self, move):
-        if move == LEFT:
-            keyboard.release(self.right_key)
-            keyboard.press(self.left_key)
-        elif move == RIGHT:
-            keyboard.release(self.left_key)
-            keyboard.press(self.right_key)
-        else:
-            keyboard.release(self.right_key)
-            keyboard.release(self.left_key)
-
     def draw(self, screen, fps):
         self.obstacle.draw(screen)
         self.sensor.draw(screen)
 
-        script = f"""document.ctx.clearRect(0, 0, {self.board_analyzer.board_dims["native_width"]}, {self.board_analyzer.board_dims["native_height"]});
+        script = f"""document.ctx.clearRect(0, 0, {self.board_analyzer.board_dims["display_width"]}, {self.board_analyzer.board_dims["display_height"]});
         document.ctx.fillStyle = "rgb(200, 0, 0)";
         document.ctx.fillRect{*self.sensor.sprite.rect,};"""
         self.board_analyzer.driver.execute_script(script)
@@ -113,7 +102,7 @@ class Bot:
 
                 # Apply move accordingly
                 move = self.get_move()
-                self.apply_move(move)
+                #self.apply_move(move)
                 self.moves.append(move)
 
             # Draw
